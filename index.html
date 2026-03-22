@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Wiezen Score Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial; padding: 10px; max-width: 1000px; margin:auto; }
+    table { border-collapse: collapse; width:100%; margin-top:10px; }
+    th, td { border:1px solid #ccc; padding:6px; text-align:center; }
+    button { margin:5px; padding:8px; }
+    input, select { margin:5px; padding:6px; }
+  </style>
+</head>
+<body>
+
+<h2>Wiezen Score Tracker</h2>
+
+<h3>Players</h3>
+<input id="p1" placeholder="Player 1">
+<input id="p2" placeholder="Player 2">
+<input id="p3" placeholder="Player 3">
+<input id="p4" placeholder="Player 4">
+
+<br><br>
+<button onclick="startGame()">Start Game</button>
+
+<h3>Round Entry</h3>
+
+<select id="bidType" onchange="onBidChange()"></select>
+<div id="playerSection"></div>
+
+<input id="slagen" type="number" placeholder="Aantal slagen">
+
+<br>
+
+<label>
+  <input type="checkbox" id="doublePoints"> Double points
+</label>
+
+<br>
+
+<button onclick="applyRound()">Apply Round</button>
+<button onclick="undoLast()">Undo</button>
+
+<h3>Scores</h3>
+<table id="scoreTable"></table>
+
+<h3>Round History</h3>
+<table id="historyTable"></table>
+
+<script>
+
+let players = [];
+let history = [];
+
+const bidType = document.getElementById("bidType");
+const playerSection = document.getElementById("playerSection");
+const scoreTable = document.getElementById("scoreTable");
+const historyTable = document.getElementById("historyTable");
+
+const bids = {
+
+  "Samen 8": { type:"team", target:8, success:[8,11,14,17,20,30], failure:[-11,-14,-17,-20,-23,-26] },
+  "Samen 9": { type:"team", target:9, success:[11,14,17,20,30], failure:[-14,-17,-20,-23,-26] },
+  "Samen 10": { type:"team", target:10, success:[14,17,20,30], failure:[-17,-20,-23,-26] },
+  "Samen 11": { type:"team", target:11, success:[17,20,30], failure:[-20,-23,-26] },
+  "Samen 12": { type:"team", target:12, success:[20,30], failure:[-23,-26,-29] },
+  "Samen 13": { type:"team", target:13, success:[30], failure:[-26,-29,-32] },
+
+  "Alleen 5": { type:"solo", target:5, success:[3,4,5,6], failure:[-4,-5,-6,-7,-8] },
+  "Alleen 6": { type:"solo", target:6, success:[4,5,6], failure:[-5,-6,-7,-8] },
+  "Alleen 7": { type:"solo", target:7, success:[5,6], failure:[-6,-7,-8] },
+  "Alleen 8": { type:"solo", target:8, success:[7], failure:[-8,-9,-10] },
+
+  "Abondance 9": { type:"abondance", target:9, success:[10,15,20,30], fail:-10 },
+  "Abondance 10": { type:"abondance", target:10, success:[15,20,30], fail:-15 },
+  "Abondance 11": { type:"abondance", target:11, success:[20,30], fail:-20 },
+  "Abondance 12": { type:"abondance", target:12, success:[30], fail:-30 },
+
+  "Kleine Miserie": { type:"miserie", value:6 },
+  "Grote Miserie": { type:"miserie", value:12 },
+  "Open Miserie": { type:"miserie", value:24 },
+
+  "Piccolo": { type:"piccolo" },
+  "Troel": { type:"troel" },
+  "Solo Slim": { type:"soloSlim" }
+
+};
+
+function startGame() {
+  let names = [p1.value,p2.value,p3.value,p4.value].map(n=>n.trim());
+  if (names.some(n=>n==="")) return alert("Enter all players");
+
+  players = names.map(n=>({name:n, score:0}));
+  history = [];
+
+  populateBidDropdown();
+  populatePlayerDropdown();
+  updateDisplay();
+  updateHistory();
+}
+
+function populateBidDropdown() {
+  bidType.innerHTML = "";
+  Object.keys(bids).forEach(k=>{
+    let o = document.createElement("option");
+    o.value = k;
+    o.text = k;
+    bidType.appendChild(o);
+  });
+}
+
+function populatePlayerDropdown() {
+  playerSection.innerHTML = "";
+  let bid = bids[bidType.value];
+
+  if (bid.type === "team" || bid.type === "troel") {
+    playerSection.innerHTML = `
+      <select id="player1"></select>
+      <select id="player2"></select>
+    `;
+  } else {
+    playerSection.innerHTML = `<select id="player1"></select>`;
+  }
+
+  let selects = playerSection.querySelectorAll("select");
+
+  selects.forEach(sel=>{
+    players.forEach((p,i)=>{
+      let opt = document.createElement("option");
+      opt.value = i;
+      opt.text = p.name;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function onBidChange() {
+  populatePlayerDropdown();
+}
+
+function getLadderValue(bid, slagen) {
+  let success = slagen >= bid.target;
+
+  if (success) {
+    let diff = slagen - bid.target;
+    return bid.success[Math.min(diff, bid.success.length - 1)];
+  } else {
+    let diff = bid.target - slagen;
+    let index = Math.min(diff - 1, bid.failure.length - 1);
+    return bid.failure[index];
+  }
+}
+
+function applyRound() {
+
+  let bid = bids[bidType.value];
+  let slagen = parseInt(document.getElementById("slagen").value);
+  let doubleMultiplier = document.getElementById("doublePoints").checked ? 2 : 1;
+
+  if (!bid || isNaN(slagen)) return alert("Missing input");
+
+  let scores = [0,0,0,0];
+
+  if (bid.type === "troel") {
+
+    let p1 = parseInt(player1.value);
+    let p2 = parseInt(player2.value);
+
+    let base;
+
+    if (slagen === 13) {
+      base = 30;
+    } else if (slagen >= 8) {
+      base = 16;
+    } else {
+      base = -16;
+    }
+
+    base *= doubleMultiplier;
+
+    players.forEach((_,i)=>{
+      scores[i] = (i===p1||i===p2) ? base : -base;
+    });
+
+  }
+
+  else if (bid.type === "soloSlim") {
+    let p = parseInt(player1.value);
+    let success = (slagen === 13);
+    let base = 60 * doubleMultiplier;
+
+    players.forEach((_,i)=>{
+      scores[i] = (i===p)
+        ? (success ? base*3 : -base*3)
+        : (success ? -base : base);
+    });
+  }
+
+  else if (bid.type === "piccolo") {
+    let p = parseInt(player1.value);
+    let success = (slagen === 1);
+    let base = 8 * doubleMultiplier;
+
+    players.forEach((_,i)=>{
+      scores[i] = (i===p)
+        ? (success ? base*3 : -base*3)
+        : (success ? -base : base);
+    });
+  }
+
+  else if (bid.type === "miserie") {
+    let p = parseInt(player1.value);
+    let success = (slagen === 0);
+    let base = bid.value * doubleMultiplier;
+
+    players.forEach((_,i)=>{
+      scores[i] = (i===p)
+        ? (success ? base*3 : -base*3)
+        : (success ? -base : base);
+    });
+  }
+
+  else if (bid.type === "abondance") {
+    let p = parseInt(player1.value);
+    let success = slagen >= bid.target;
+
+    let base = success
+      ? bid.success[Math.min(slagen - bid.target, bid.success.length-1)]
+      : bid.fail;
+
+    base *= doubleMultiplier;
+
+    players.forEach((_,i)=>{
+      scores[i] = (i===p) ? base*3 : -base;
+    });
+  }
+
+  else if (bid.type === "solo") {
+    let p = parseInt(player1.value);
+    let base = getLadderValue(bid, slagen) * doubleMultiplier;
+
+    players.forEach((_,i)=>{
+      scores[i] = (i===p) ? base*3 : -base;
+    });
+  }
+
+  else if (bid.type === "team") {
+    let p1 = parseInt(player1.value);
+    let p2 = parseInt(player2.value);
+    let base = getLadderValue(bid, slagen) * doubleMultiplier;
+
+    players.forEach((_,i)=>{
+      scores[i] = (i===p1||i===p2) ? base : -base;
+    });
+  }
+
+  players.forEach((p,i)=> p.score += scores[i]);
+
+  history.push({ bid: bidType.value, scores:[...scores] });
+
+  updateDisplay();
+  updateHistory();
+}
+
+function updateDisplay() {
+  scoreTable.innerHTML =
+    "<tr>" + players.map(p=>`<th>${p.name}</th>`).join("") + "</tr>" +
+    "<tr>" + players.map(p=>`<td>${p.score}</td>`).join("") + "</tr>";
+}
+
+function updateHistory() {
+  let html = "<tr><th>#</th><th>Contract</th>";
+  players.forEach(p=> html += `<th>${p.name}</th>`);
+  html += "</tr>";
+
+  history.forEach((h,i)=>{
+    html += `<tr><td>${i+1}</td><td>${h.bid}</td>`;
+    h.scores.forEach(s=> html += `<td>${s}</td>`);
+    html += "</tr>";
+  });
+
+  historyTable.innerHTML = html;
+}
+
+function undoLast() {
+  if (!history.length) return;
+  let last = history.pop();
+
+  players.forEach((p,i)=>{
+    p.score -= last.scores[i];
+  });
+
+  updateDisplay();
+  updateHistory();
+}
+
+</script>
+
+</body>
+</html>
