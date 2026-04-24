@@ -42,6 +42,17 @@
 <button onclick="applyRound()">Apply Round</button>
 <button onclick="undoLast()">Undo</button>
 
+<!-- ✅ NEW MANUAL SCORE SECTION -->
+<h3>Manual Score Entry (Recovery)</h3>
+<input id="manual1" placeholder="Player 1 score">
+<input id="manual2" placeholder="Player 2 score">
+<input id="manual3" placeholder="Player 3 score">
+<input id="manual4" placeholder="Player 4 score">
+
+<br>
+
+<button onclick="setManualScores()">Set Scores Manually</button>
+
 <h3>Scores</h3>
 <table id="scoreTable"></table>
 
@@ -58,6 +69,10 @@ const playerSection = document.getElementById("playerSection");
 const scoreTable = document.getElementById("scoreTable");
 const historyTable = document.getElementById("historyTable");
 
+/* =========================
+   CONTRACT TABLE (UNCHANGED)
+========================= */
+
 const bids = {
 
   "Samen 8": { type:"team", target:8, success:[8,11,14,17,20,30], failure:[-11,-14,-17,-20,-23,-26] },
@@ -72,10 +87,10 @@ const bids = {
   "Alleen 7": { type:"solo", target:7, success:[5,6], failure:[-6,-7,-8] },
   "Alleen 8": { type:"solo", target:8, success:[7], failure:[-8,-9,-10] },
 
-  "Abondance 9": { type:"abondance", target:9, success:[10,15,20,30], fail:-10 },
-  "Abondance 10": { type:"abondance", target:10, success:[15,20,30], fail:-15 },
-  "Abondance 11": { type:"abondance", target:11, success:[20,30], fail:-20 },
-  "Abondance 12": { type:"abondance", target:12, success:[30], fail:-30 },
+  "Abondance 9": { type:"abondance", target:9, success:[10,15,20,30], fail:10 },
+  "Abondance 10": { type:"abondance", target:10, success:[15,20,30], fail:15 },
+  "Abondance 11": { type:"abondance", target:11, success:[20,30], fail:20 },
+  "Abondance 12": { type:"abondance", target:12, success:[30], fail:30 },
 
   "Kleine Miserie": { type:"miserie", value:6 },
   "Grote Miserie": { type:"miserie", value:12 },
@@ -86,6 +101,8 @@ const bids = {
   "Solo Slim": { type:"soloSlim" }
 
 };
+
+/* ========================= */
 
 function startGame() {
   let names = [p1.value,p2.value,p3.value,p4.value].map(n=>n.trim());
@@ -152,6 +169,10 @@ function getLadderValue(bid, slagen) {
   }
 }
 
+/* ========================= */
+/* APPLY ROUND (UNCHANGED) */
+/* ========================= */
+
 function applyRound() {
 
   let bid = bids[bidType.value];
@@ -169,20 +190,15 @@ function applyRound() {
 
     let base;
 
-    if (slagen === 13) {
-      base = 30;
-    } else if (slagen >= 8) {
-      base = 16;
-    } else {
-      base = -16;
-    }
+    if (slagen === 13) base = 30;
+    else if (slagen >= 8) base = 16;
+    else base = -16;
 
     base *= doubleMultiplier;
 
     players.forEach((_,i)=>{
       scores[i] = (i===p1||i===p2) ? base : -base;
     });
-
   }
 
   else if (bid.type === "soloSlim") {
@@ -262,6 +278,35 @@ function applyRound() {
   updateDisplay();
   updateHistory();
 }
+
+/* ========================= */
+/* ✅ NEW MANUAL SCORE FUNCTION */
+/* ========================= */
+
+function setManualScores() {
+
+  let values = [
+    parseInt(manual1.value),
+    parseInt(manual2.value),
+    parseInt(manual3.value),
+    parseInt(manual4.value)
+  ];
+
+  if (values.some(v => isNaN(v))) {
+    return alert("Enter all 4 scores");
+  }
+
+  players.forEach((p,i)=>{
+    p.score = values[i];
+  });
+
+  history = []; // optional: clear history so it doesn't conflict
+
+  updateDisplay();
+  updateHistory();
+}
+
+/* ========================= */
 
 function updateDisplay() {
   scoreTable.innerHTML =
